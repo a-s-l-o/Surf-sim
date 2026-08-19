@@ -1,0 +1,38 @@
+{
+  "center": {
+    "lat": -38.3689,
+    "lon": 144.2813
+  },
+  "sizeMeters": 6000,
+  "heightmapResolution": 1024,
+  "heightEncoding": "terrarium (h = R*256 + G + B/256 - 32768, meters)",
+  "placement": {
+    "shore": {
+      "east": -20.52785923753664,
+      "north": -372.4340175953076
+    },
+    "offshoreDir": {
+      "east": 0.7256857259923165,
+      "north": -0.6880263273240381
+    },
+    "reefShore": {
+      "east": -113.09649082867524,
+      "north": -458.63754678839837
+    },
+    "reefDir": {
+      "east": 0.41510488997033435,
+      "north": -0.9097735599162665
+    },
+    "reefLen": 520,
+    "lineup": {
+      "east": 49.41719415858768,
+      "north": -670.2723789684076
+    }
+  },
+  "satelliteScene": "sentinel-s2-l2a-cogs/55/H/BT/2024/12/S2B_55HBT_20241205_0_L2A",
+  "attribution": {
+    "elevation": "Terrain Tiles (Mapzen/AWS Open Data) — SRTM, GA Australia et al.",
+    "imagery": "Contains modified Copernicus Sentinel data 2024, processed by ESA / Element 84 (AWS Open Data)"
+  },
+  "bakedAt": "2026-08-19T11:42:17.886Z"
+}
