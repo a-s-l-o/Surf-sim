@@ -8,25 +8,25 @@
   "heightEncoding": "terrarium (h = R*256 + G + B/256 - 32768, meters)",
   "placement": {
     "shore": {
-      "east": -20.52785923753664,
-      "north": -372.4340175953076
+      "east": 85.04398826979465,
+      "north": -67.44868035190609
     },
     "offshoreDir": {
-      "east": 0.7256857259923165,
-      "north": -0.6880263273240381
+      "east": 0.7424027346320736,
+      "north": -0.6699538637927382
     },
     "reefShore": {
-      "east": -113.09649082867524,
-      "north": -458.63754678839837
+      "east": -5.37454777234381,
+      "north": -155.90481829606745
     },
     "reefDir": {
-      "east": 0.41510488997033435,
-      "north": -0.9097735599162665
+      "east": 0.4373746944758642,
+      "north": -0.8992793651764419
     },
     "reefLen": 520,
     "lineup": {
-      "east": 49.41719415858768,
-      "north": -670.2723789684076
+      "east": 255.37481935313454,
+      "north": -440.5269670190059
     }
   },
   "satelliteScene": "sentinel-s2-l2a-cogs/55/H/BT/2024/12/S2B_55HBT_20241205_0_L2A",
@@ -34,5 +34,5 @@
     "elevation": "Terrain Tiles (Mapzen/AWS Open Data) — SRTM, GA Australia et al.",
     "imagery": "Contains modified Copernicus Sentinel data 2024, processed by ESA / Element 84 (AWS Open Data)"
   },
-  "bakedAt": "2026-08-19T11:42:17.886Z"
+  "bakedAt": "2026-08-19T12:29:16.715Z"
 }

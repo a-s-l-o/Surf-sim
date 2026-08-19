@@ -214,9 +214,48 @@ function buildHeightField(sampleElevation) {
     }
   }
 
-  // Land mask and chamfer distance-to-shore (meters) for ocean pixels.
+  // Land mask. Terrarium's coastal zone is littered with phantom islands
+  // (data noise), so keep only land connected to the map border — the real
+  // mainland — and dissolve the rest into the sea before any distance math.
   const land = new Uint8Array(R * R);
   for (let k = 0; k < R * R; k++) land[k] = blurred[k] > 0.5 ? 1 : 0;
+  {
+    const mainland = new Uint8Array(R * R);
+    const stack = [];
+    for (let i = 0; i < R; i++) {
+      for (const k of [i, (R - 1) * R + i, i * R, i * R + R - 1]) {
+        if (land[k] && !mainland[k]) {
+          mainland[k] = 1;
+          stack.push(k);
+        }
+      }
+    }
+    while (stack.length) {
+      const k = stack.pop();
+      const i = k % R,
+        j = (k - i) / R;
+      for (let dj = -1; dj <= 1; dj++) {
+        for (let di = -1; di <= 1; di++) {
+          const ii = i + di,
+            jj = j + dj;
+          if (ii < 0 || ii >= R || jj < 0 || jj >= R) continue;
+          const kk = jj * R + ii;
+          if (land[kk] && !mainland[kk]) {
+            mainland[kk] = 1;
+            stack.push(kk);
+          }
+        }
+      }
+    }
+    let dissolved = 0;
+    for (let k = 0; k < R * R; k++) {
+      if (land[k] && !mainland[k]) {
+        land[k] = 0;
+        dissolved++;
+      }
+    }
+    console.log(`bathymetry: dissolved ${dissolved} phantom-island pixels`);
+  }
   const INF = 1e9;
   // Seed the distance transform only from substantial land (>3 m): the
   // strings of low offshore rock platforms would otherwise keep the whole
@@ -253,12 +292,15 @@ function buildHeightField(sampleElevation) {
     east: (i / (R - 1) - 0.5) * SIZE_M,
     north: (0.5 - j / (R - 1)) * SIZE_M,
   });
+  // Waterline = ocean pixel with a land neighbor (independent of the
+  // tall-land distance field, which ignores the beach).
   let shore = null,
     shoreD2 = Infinity;
-  for (let j = 0; j < R; j++) {
-    for (let i = 0; i < R; i++) {
+  for (let j = 1; j < R - 1; j++) {
+    for (let i = 1; i < R - 1; i++) {
       const k = j * R + i;
-      if (land[k] || dist[k] > px * 1.6) continue; // ocean pixel touching shore
+      if (land[k]) continue;
+      if (!(land[k - 1] || land[k + 1] || land[k - R] || land[k + R])) continue;
       const p = toMeters(i, j);
       const d2 = p.east * p.east + p.north * p.north;
       if (d2 < shoreD2) {
@@ -321,16 +363,37 @@ function buildHeightField(sampleElevation) {
   const chanLen = 420,
     chanWidth = 110;
 
-  // Lineup: sit in the takeoff zone just NE of the reef crest, ~260 m out.
-  const lineup = {
-    east: reefShore.east + rdx * 260 + pe * 60,
-    north: reefShore.north + rdy * 260 + pn * 60,
-  };
+  // Distance from substantial (>4 m) land, to separate the real rock shelf
+  // at the cliff bases from terrarium's phantom offshore islands.
+  const tall = new Float32Array(R * R);
+  for (let k = 0; k < R * R; k++)
+    tall[k] = land[k] && blurred[k] > 4 ? 0 : INF;
+  for (let j = 0; j < R; j++)
+    for (let i = 0; i < R; i++) {
+      const k = j * R + i;
+      if (i > 0) tall[k] = Math.min(tall[k], tall[k - 1] + D1);
+      if (j > 0) tall[k] = Math.min(tall[k], tall[k - R] + D1);
+    }
+  for (let j = R - 1; j >= 0; j--)
+    for (let i = R - 1; i >= 0; i--) {
+      const k = j * R + i;
+      if (i < R - 1) tall[k] = Math.min(tall[k], tall[k + 1] + D1);
+      if (j < R - 1) tall[k] = Math.min(tall[k], tall[k + R] + D1);
+    }
 
   for (let j = 0; j < R; j++) {
     for (let i = 0; i < R; i++) {
       const k = j * R + i;
-      if (land[k]) continue;
+      // Keep real land, and the awash rock shelf hugging the cliffs; the
+      // "islands" far from any substantial land are elevation-data noise —
+      // dissolve them into the seabed.
+      if (land[k] && tall[k] <= 90) {
+        blurred[k] = Math.min(blurred[k], 0.6);
+        continue;
+      }
+      if (land[k] && tall[k] > 90) {
+        // fall through: treat as ocean
+      } else if (land[k]) continue;
       const east = (i / (R - 1) - 0.5) * SIZE_M;
       const north = (0.5 - j / (R - 1)) * SIZE_M;
       // Distance is measured from the 3 m contour; ~55 m of that is beach.
@@ -352,25 +415,34 @@ function buildHeightField(sampleElevation) {
     }
   }
 
-  // Offshore rock platforms (real, but noisy at this resolution): cap any
-  // land pixel far from substantial (>4 m) land at wave-washed height.
-  const tall = new Float32Array(R * R);
-  for (let k = 0; k < R * R; k++)
-    tall[k] = land[k] && blurred[k] > 4 ? 0 : INF;
-  for (let j = 0; j < R; j++)
-    for (let i = 0; i < R; i++) {
-      const k = j * R + i;
-      if (i > 0) tall[k] = Math.min(tall[k], tall[k - 1] + D1);
-      if (j > 0) tall[k] = Math.min(tall[k], tall[k - R] + D1);
+  // Lineup: walk out along the reef axis (over the finished bathymetry)
+  // until the takeoff zone is ~5 m deep, then sit a touch toward the
+  // channel — outside the impact zone, looking back at the peak.
+  const depthAtMeters = (e, nn) => {
+    const i = Math.round((e / SIZE_M + 0.5) * (R - 1));
+    const j = Math.round((0.5 - nn / SIZE_M) * (R - 1));
+    if (i < 0 || i >= R || j < 0 || j >= R) return 999;
+    return -blurred[j * R + i];
+  };
+  let lineupAlong = 400;
+  for (let t = 150; t <= 900; t += 10) {
+    const d = depthAtMeters(
+      reefShore.east + rdx * t + pe * 110,
+      reefShore.north + rdy * t + pn * 110
+    );
+    if (d >= 4.6) {
+      lineupAlong = t;
+      break;
     }
-  for (let j = R - 1; j >= 0; j--)
-    for (let i = R - 1; i >= 0; i--) {
-      const k = j * R + i;
-      if (i < R - 1) tall[k] = Math.min(tall[k], tall[k + 1] + D1);
-      if (j < R - 1) tall[k] = Math.min(tall[k], tall[k + R] + D1);
-    }
-  for (let k = 0; k < R * R; k++)
-    if (land[k] && tall[k] > 80) blurred[k] = Math.min(blurred[k], 1.2);
+  }
+  const lineup = {
+    east: reefShore.east + rdx * lineupAlong + pe * 110,
+    north: reefShore.north + rdy * lineupAlong + pn * 110,
+  };
+  console.log(
+    `bathymetry: lineup ${lineupAlong}m along reef, depth ` +
+      depthAtMeters(lineup.east, lineup.north).toFixed(1) + "m"
+  );
 
   return {
     height: blurred,
@@ -417,7 +489,7 @@ function writeHeightmapPng(height) {
 
 // ------------------------------------------------- satellite (Sentinel-2)
 
-async function buildSatellite() {
+async function buildSatellite(heightField) {
   const url = `${S2_BASE}${S2_SCENE}/TCI.tif`;
   console.log("satellite: opening COG", url);
   const tiff = await fromUrl(url);
@@ -468,6 +540,45 @@ async function buildSatellite() {
           s(x0, y0 + 1) * (1 - dx) * dy +
           s(x0 + 1, y0 + 1) * dx * dy;
       }
+    }
+  }
+
+  // Nadir imagery has no real texels for near-vertical cliff faces — they
+  // get draped with waterline surf pixels and render white. Recolor steep
+  // land toward the marl rock of the Bells cliffs, keeping some of the
+  // image's own luminance for variation.
+  const R = HEIGHT_RES;
+  const hfAt = (e, nn) => {
+    const fi = Math.max(0, Math.min(R - 1.001, (e / SIZE_M + 0.5) * (R - 1)));
+    const fj = Math.max(0, Math.min(R - 1.001, (0.5 - nn / SIZE_M) * (R - 1)));
+    const i0 = Math.floor(fi), j0 = Math.floor(fj);
+    const di = fi - i0, dj = fj - j0;
+    return (
+      heightField[j0 * R + i0] * (1 - di) * (1 - dj) +
+      heightField[j0 * R + i0 + 1] * di * (1 - dj) +
+      heightField[(j0 + 1) * R + i0] * (1 - di) * dj +
+      heightField[(j0 + 1) * R + i0 + 1] * di * dj
+    );
+  };
+  const stepM = 6;
+  for (let j = 0; j < SAT_RES; j++) {
+    for (let i = 0; i < SAT_RES; i++) {
+      const east = (i / (SAT_RES - 1) - 0.5) * SIZE_M;
+      const north = (0.5 - j / (SAT_RES - 1)) * SIZE_M;
+      const h = hfAt(east, north);
+      if (h < 0.5) continue;
+      const gx = (hfAt(east + stepM, north) - hfAt(east - stepM, north)) / (2 * stepM);
+      const gy = (hfAt(east, north + stepM) - hfAt(east, north - stepM)) / (2 * stepM);
+      const slope = Math.hypot(gx, gy);
+      const f = Math.min(1, Math.max(0, (slope - 0.5) / 0.6));
+      if (f <= 0) continue;
+      const k = (j * SAT_RES + i) * 3;
+      const lum = (out[k] * 0.3 + out[k + 1] * 0.6 + out[k + 2] * 0.1) / 255;
+      const shade = 0.65 + 0.7 * lum;
+      const rock = [126 * shade, 96 * shade, 66 * shade];
+      out[k] = out[k] * (1 - f) + rock[0] * f;
+      out[k + 1] = out[k + 1] * (1 - f) + rock[1] * f;
+      out[k + 2] = out[k + 2] * (1 - f) + rock[2] * f;
     }
   }
 
@@ -529,8 +640,8 @@ function makeFoamPng(size = 256) {
     for (let i = 0; i < size; i++) {
       const n = fbm(i / size, j / size);
       // Streaky foam: threshold + soft blobs.
-      const blob = Math.max(0, (n - 0.42) / 0.58);
-      const v = Math.min(1, blob * 1.8) ** 1.4;
+      const blob = Math.max(0, (n - 0.5) / 0.5);
+      const v = Math.min(1, blob * 1.9) ** 1.6;
       const k = (j * size + i) * 4;
       const c = 200 + Math.round(v * 55);
       png.data[k] = c;
@@ -582,7 +693,7 @@ console.log("heightmap: building field + bathymetry");
 const { height: heightField, placement } = buildHeightField(sampleElevation);
 await writeFile(new URL("heightmap.png", OUT_DIR), writeHeightmapPng(heightField));
 
-const satJpg = await buildSatellite();
+const satJpg = await buildSatellite(heightField);
 await writeFile(new URL("satellite.jpg", OUT_DIR), satJpg);
 
 console.log("textures: foam + noise");
