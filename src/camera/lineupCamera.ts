@@ -9,6 +9,8 @@ export interface LineupCamera {
   /** Try to enable device-orientation look (needs a user gesture on iOS). */
   enableTilt(): Promise<boolean>;
   tiltActive(): boolean;
+  /** Current look yaw (radians) — paddling heads this way. */
+  getYaw(): number;
 }
 
 /**
@@ -151,5 +153,6 @@ export function createLineupCamera(
     },
     enableTilt,
     tiltActive: () => tiltOn,
+    getYaw: () => yaw + (tiltOn ? tiltYawOffset : 0),
   };
 }

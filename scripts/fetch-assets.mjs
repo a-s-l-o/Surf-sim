@@ -214,6 +214,47 @@ function buildHeightField(sampleElevation) {
     }
   }
 
+  // Terrarium + resampling smooths the Bells cliff amphitheatre into
+  // ramps. Steepen real relief back with an unsharp mask (feathered in
+  // above the waterline so the coastline itself doesn't move), plus a
+  // mild presentation-only relief emphasis so the cliffs read from a
+  // camera 1.5 m off the water.
+  {
+    const wide = new Float32Array(blurred);
+    const tmp = new Float32Array(R * R);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let j = 0; j < R; j++) {
+        for (let i = 0; i < R; i++) {
+          let sum = 0,
+            cnt = 0;
+          for (let dj = -1; dj <= 1; dj++) {
+            for (let di = -1; di <= 1; di++) {
+              const jj = j + dj,
+                ii = i + di;
+              if (jj < 0 || jj >= R || ii < 0 || ii >= R) continue;
+              sum += wide[jj * R + ii];
+              cnt++;
+            }
+          }
+          tmp[j * R + i] = sum / cnt;
+        }
+      }
+      wide.set(tmp);
+    }
+    const smoothstep = (a, b, x) => {
+      const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+      return t * t * (3 - 2 * t);
+    };
+    for (let k = 0; k < R * R; k++) {
+      const h = blurred[k];
+      if (h <= 1.5) continue;
+      const sharp = h + 1.4 * (h - wide[k]);
+      let v = h + (sharp - h) * smoothstep(1.5, 4, h);
+      v *= 1 + 0.35 * smoothstep(3, 8, v);
+      blurred[k] = Math.max(v, 0.6);
+    }
+  }
+
   // Land mask. Terrarium's coastal zone is littered with phantom islands
   // (data noise), so keep only land connected to the map border — the real
   // mainland — and dissolve the rest into the sea before any distance math.
@@ -430,7 +471,7 @@ function buildHeightField(sampleElevation) {
       reefShore.east + rdx * t + pe * 110,
       reefShore.north + rdy * t + pn * 110
     );
-    if (d >= 4.6) {
+    if (d >= 4.1) {
       lineupAlong = t;
       break;
     }
@@ -574,8 +615,8 @@ async function buildSatellite(heightField) {
       if (f <= 0) continue;
       const k = (j * SAT_RES + i) * 3;
       const lum = (out[k] * 0.3 + out[k + 1] * 0.6 + out[k + 2] * 0.1) / 255;
-      const shade = 0.65 + 0.7 * lum;
-      const rock = [126 * shade, 96 * shade, 66 * shade];
+      const shade = 0.78 + 0.55 * lum;
+      const rock = [172 * shade, 128 * shade, 86 * shade];
       out[k] = out[k] * (1 - f) + rock[0] * f;
       out[k + 1] = out[k + 1] * (1 - f) + rock[1] * f;
       out[k + 2] = out[k + 2] * (1 - f) + rock[2] * f;

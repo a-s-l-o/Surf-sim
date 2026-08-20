@@ -100,12 +100,12 @@ export interface QualityTier {
 }
 
 export const QUALITY: Record<"low" | "high", QualityTier> = {
-  high: { name: "high", pixelRatioCap: 2, oceanSegments: 360, terrainSegments: 256 },
-  low: { name: "low", pixelRatioCap: 1.2, oceanSegments: 220, terrainSegments: 176 },
+  high: { name: "high", pixelRatioCap: 2, oceanSegments: 360, terrainSegments: 416 },
+  low: { name: "low", pixelRatioCap: 1.2, oceanSegments: 220, terrainSegments: 256 },
 };
 
 export const OCEAN_RADIUS = 4500; // half-extent of the warped ocean grid, m
-export const EYE_HEIGHT = 1.35; // sitting on a board, eyes above the water
+export const EYE_HEIGHT = 1.6; // sitting on a board, eyes above the water
 export const SEA_LEVEL = 0;
 
 // Wave-set scheduling (seconds).

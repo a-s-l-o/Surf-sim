@@ -10,12 +10,40 @@ import {
 import { oceanVertexShader } from "./waves.glsl";
 import { oceanFragmentShader } from "./water.glsl";
 
+export interface SurfaceSample {
+  /** Water surface height (m above sea level). */
+  y: number;
+  /** Surface gradient dY/dx, dY/dz. */
+  slopeX: number;
+  slopeZ: number;
+  /** Whitewater intensity 0..1 (crest-weighted breaking). */
+  breaking: number;
+  /** Max amp/aMax across swells — how close the water is to breaking. */
+  over: number;
+  /** 0..1 proximity to the dominant swell's crest. */
+  crest: number;
+  /** Water depth (m). */
+  depth: number;
+}
+
 export interface Ocean {
   mesh: THREE.Mesh;
   material: THREE.ShaderMaterial;
   update(time: number, setGain: number): void;
   /** CPU mirror of the swell components, for camera buoyancy. */
   waveHeightAt(x: number, z: number, time: number, setGain: number): number;
+  /** Full CPU mirror of the shader's swell state, for surf physics. */
+  surfaceAt(
+    x: number,
+    z: number,
+    time: number,
+    setGain: number,
+    out?: SurfaceSample
+  ): SurfaceSample;
+  /** Travel direction of the dominant groundswell (world xz, unit). */
+  swellDir: { x: number; z: number };
+  /** Phase speed (m/s) of the dominant swell in water of this depth. */
+  phaseSpeedAt(depth: number): number;
   rebuildGeometry(segments: number): void;
 }
 
@@ -123,14 +151,33 @@ export function createOcean(
   mesh.renderOrder = 1;
   mesh.frustumCulled = false; // vertices move in the shader
 
-  function waveHeightAt(
+  // CPU mirror of the vertex shader's swell math (waves.glsl.ts) — must
+  // stay in sync with it: shoaling, breaking clamp, foam. Drives buoyancy,
+  // catch detection, ride physics, and wipeouts.
+  const ss = THREE.MathUtils.smoothstep;
+  function surfaceAt(
     x: number,
     z: number,
     time: number,
-    setGain: number
-  ): number {
+    setGain: number,
+    out?: SurfaceSample
+  ): SurfaceSample {
+    const sample: SurfaceSample = out ?? {
+      y: 0,
+      slopeX: 0,
+      slopeZ: 0,
+      breaking: 0,
+      over: 0,
+      crest: 0,
+      depth: 0,
+    };
     const depth = Math.max(0.05, -assets.heightAt(x, z));
-    let y = 0;
+    let y = 0,
+      sx = 0,
+      sz = 0,
+      breaking = 0,
+      overMax = 0,
+      crest0 = 0;
     for (let i = 0; i < NUM_SWELL; i++) {
       const k = data[i].x;
       const omega = data[i].w;
@@ -138,17 +185,48 @@ export function createOcean(
       const tkd = Math.min(1, Math.max(0.06, Math.tanh(k * depth)));
       const refr = 1 / Math.sqrt(tkd);
       amp *= Math.min(refr, 2.2);
-      const aMax = 0.42 * depth;
+      const aMax = 0.48 * depth;
       const over = amp / aMax;
-      amp = Math.min(
-        amp,
-        aMax * (1 + 0.25 * THREE.MathUtils.smoothstep(over, 1.0, 2.2))
-      );
-      const phase =
-        k * refr * (dirs[i].x * x + dirs[i].y * z) - omega * time;
-      y += amp * Math.sin(phase);
+      const wBreaking = ss(over, 0.7, 1.25);
+      amp = Math.min(amp, aMax * (1 + 0.25 * ss(over, 1.0, 2.2)));
+      const kEff = k * refr;
+      const phase = kEff * (dirs[i].x * x + dirs[i].y * z) - omega * time;
+      const sin = Math.sin(phase);
+      const cos = Math.cos(phase);
+      y += amp * sin;
+      sx += amp * kEff * dirs[i].x * cos;
+      sz += amp * kEff * dirs[i].y * cos;
+      const crestness = 0.5 + 0.5 * sin;
+      breaking = Math.max(breaking, wBreaking * crestness ** 3);
+      overMax = Math.max(overMax, over);
+      if (i === 0) crest0 = crestness;
     }
-    return y;
+    sample.y = y;
+    sample.slopeX = sx;
+    sample.slopeZ = sz;
+    sample.breaking = breaking;
+    sample.over = overMax;
+    sample.crest = crest0;
+    sample.depth = depth;
+    return sample;
+  }
+
+  const scratch: SurfaceSample = {
+    y: 0,
+    slopeX: 0,
+    slopeZ: 0,
+    breaking: 0,
+    over: 0,
+    crest: 0,
+    depth: 0,
+  };
+  function waveHeightAt(
+    x: number,
+    z: number,
+    time: number,
+    setGain: number
+  ): number {
+    return surfaceAt(x, z, time, setGain, scratch).y;
   }
 
   return {
@@ -159,6 +237,14 @@ export function createOcean(
       material.uniforms.uSetGain.value = setGain;
     },
     waveHeightAt,
+    surfaceAt,
+    swellDir: { x: dirs[0].x, z: dirs[0].y },
+    phaseSpeedAt(depth: number) {
+      const k = data[0].x;
+      const tkd = Math.min(1, Math.max(0.06, Math.tanh(k * depth)));
+      // omega / kEff with kEff = k / sqrt(tanh(kd))
+      return (data[0].w / k) * Math.sqrt(tkd);
+    },
     rebuildGeometry(newSegments: number) {
       mesh.geometry.dispose();
       mesh.geometry = buildGrid(cx, cz, newSegments, terrainHeightAt);

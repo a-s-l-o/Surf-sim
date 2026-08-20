@@ -26,14 +26,22 @@ npm run build           # production build in dist/ — any static host works
 Note: on iPhones the tilt/motion permission only works over HTTPS, so use
 the Pages URL for tilt; drag-look works everywhere.
 
-On a phone: drag to look around, pinch to zoom, tap **ENABLE TILT** to look
-around by moving the phone (iOS asks for motion permission). On desktop:
-drag with the mouse, scroll to zoom. Wait for a set — the **SET INCOMING**
-badge pulses when one is about to roll through the lull.
+**How to surf:** hold your finger anywhere to paddle in the direction
+you're looking. When a set stands the water up under you, the wave magnet
+pulls you in — pop up and you're riding in third person. Steer by tilting
+the phone (tap **ENABLE TILT** first) or by holding your thumb left/right
+of center; trim up and down the face with vertical thumb position. Outrun
+the whitewater down the point — get swallowed for too long and you're
+tumbling. Rides are scored on time and carving.
+
+Looking around: drag (first person), pinch to zoom. Desktop: mouse drag,
+scroll zoom, space to paddle, arrows/WASD to steer. The **SET INCOMING**
+badge pulses when a set is about to roll through the lull.
 
 Debug/query params: `?t0=25` starts the clock mid-set, `?fly=200` hoists the
 camera for an aerial view, `?dbg=1..5` visualizes depth / foam / lighting /
-reflection / normals, `?noocean=1` hides the water.
+reflection / normals, `?noocean=1` hides the water, `?autocatch=1` hooks you
+into the first catchable wave automatically.
 
 ## How it's real
 
@@ -73,7 +81,8 @@ src/ui/                    HUD (loading, set indicator, quality toggle)
 
 ## Roadmap
 
-- Ride the wave: paddle, pop up, tilt-to-carve, wipeouts, scoring
+- ~~Ride the wave: paddle, pop up, tilt-to-carve, wipeouts, scoring~~ ✓ v2
+- Barrels: tube geometry + inside-the-barrel camera
 - Live swell: drive the set scheduler from a surf forecast feed
 - More breaks: Winkipop is one reef-finger definition away
 

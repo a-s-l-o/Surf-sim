@@ -4,6 +4,14 @@ export interface Hud {
   setSetIncoming(incoming: boolean): void;
   onQualityToggle(cb: (high: boolean) => void): void;
   showTiltButton(onEnable: () => Promise<boolean>): void;
+  /** Big center prompt ("HOLD TO PADDLE", "PADDLE!", …); null hides it. */
+  setPrompt(text: string | null): void;
+  /** Live ride chip; null hides it. */
+  setRide(stats: { speed: number; time: number } | null): void;
+  /** End-of-ride score toast. */
+  showScore(score: number, time: number): void;
+  /** Underwater tumble flash. */
+  wipeoutFlash(): void;
 }
 
 const HUD_CSS = `
@@ -30,6 +38,26 @@ const HUD_CSS = `
   font-weight: 600; letter-spacing: 0.12em; padding: 8px 14px;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 #hud button:active { background: rgba(30,90,115,0.7); }
+#hud .prompt { position: absolute; left: 0; right: 0; text-align: center;
+  bottom: calc(96px + env(safe-area-inset-bottom)); color: #fff; font-size: 15px;
+  font-weight: 700; letter-spacing: 0.22em; text-shadow: 0 2px 10px rgba(0,20,30,0.7);
+  opacity: 0; transition: opacity 0.35s ease; pointer-events: none; }
+#hud .prompt.on { opacity: 1; animation: hud-pulse 1.4s ease-in-out infinite; }
+#hud .ride { position: absolute; top: calc(52px + env(safe-area-inset-top));
+  left: 14px; color: #eaf7fd; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.08em; background: rgba(10,40,55,0.5); border-radius: 999px;
+  padding: 6px 12px; display: none; }
+#hud .score { position: absolute; left: 0; right: 0; top: 34%; text-align: center;
+  color: #fff; font-size: 26px; font-weight: 800; letter-spacing: 0.1em;
+  text-shadow: 0 2px 14px rgba(0,25,40,0.8); opacity: 0;
+  transition: opacity 0.4s ease; pointer-events: none; }
+#hud .score small { display: block; font-size: 12px; font-weight: 600;
+  opacity: 0.8; margin-top: 4px; }
+#hud .score.on { opacity: 1; }
+#wipeout { position: fixed; inset: 0; background:
+  radial-gradient(circle, rgba(215,235,245,0.95), rgba(20,80,110,0.9));
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease; z-index: 15; }
+#wipeout.on { opacity: 1; }
 `;
 
 export function createHud(attribution: string): Hud {
@@ -46,11 +74,21 @@ export function createHud(attribution: string): Hud {
       <button id="hud-tilt" style="display:none">ENABLE TILT</button>
       <button id="hud-quality">QUALITY: HIGH</button>
     </div>
+    <div class="prompt" id="hud-prompt"></div>
+    <div class="ride" id="hud-ride"></div>
+    <div class="score" id="hud-score"></div>
     <div class="attr">${attribution}</div>
   `;
   document.body.appendChild(root);
+  const wipeEl = document.createElement("div");
+  wipeEl.id = "wipeout";
+  document.body.appendChild(wipeEl);
 
   const setEl = root.querySelector<HTMLElement>("#hud-set")!;
+  const promptEl = root.querySelector<HTMLElement>("#hud-prompt")!;
+  const rideEl = root.querySelector<HTMLElement>("#hud-ride")!;
+  const scoreEl = root.querySelector<HTMLElement>("#hud-score")!;
+  let scoreTimer: ReturnType<typeof setTimeout> | undefined;
   const qualityBtn = root.querySelector<HTMLButtonElement>("#hud-quality")!;
   const tiltBtn = root.querySelector<HTMLButtonElement>("#hud-tilt")!;
   const loadingEl = document.getElementById("loading");
@@ -79,6 +117,32 @@ export function createHud(attribution: string): Hud {
     },
     onQualityToggle(cb) {
       qualityCb = cb;
+    },
+    setPrompt(text) {
+      if (text) {
+        promptEl.textContent = text;
+        promptEl.classList.add("on");
+      } else {
+        promptEl.classList.remove("on");
+      }
+    },
+    setRide(stats) {
+      if (!stats) {
+        rideEl.style.display = "none";
+        return;
+      }
+      rideEl.style.display = "block";
+      rideEl.textContent = `${(stats.speed * 3.6).toFixed(0)} km/h · ${stats.time.toFixed(1)}s`;
+    },
+    showScore(score, time) {
+      scoreEl.innerHTML = `+${Math.round(score * 10)}<small>${time.toFixed(1)}s ride</small>`;
+      scoreEl.classList.add("on");
+      clearTimeout(scoreTimer);
+      scoreTimer = setTimeout(() => scoreEl.classList.remove("on"), 2600);
+    },
+    wipeoutFlash() {
+      wipeEl.classList.add("on");
+      setTimeout(() => wipeEl.classList.remove("on"), 1200);
     },
     showTiltButton(onEnable) {
       tiltBtn.style.display = "";
