@@ -8,11 +8,23 @@ Bells terrain behind it, built from satellite imagery and elevation data.
 
 ## Try it
 
+**On the web:** every push deploys to GitHub Pages via
+`.github/workflows/deploy.yml` — open
+**<https://a-s-l-o.github.io/Surf-sim/>** on your phone. One-time setup: in
+the repo go to *Settings → Pages* and set *Build and deployment → Source*
+to **GitHub Actions** (then re-run the workflow from the Actions tab if it
+ran before that was enabled).
+
+**Locally:**
+
 ```bash
 npm install
-npm run dev        # then open on your phone (vite serves on your LAN)
-npm run build      # production build in dist/ — any static host works
+npm run dev -- --host   # open the printed Network URL on your phone (same Wi-Fi)
+npm run build           # production build in dist/ — any static host works
 ```
+
+Note: on iPhones the tilt/motion permission only works over HTTPS, so use
+the Pages URL for tilt; drag-look works everywhere.
 
 On a phone: drag to look around, pinch to zoom, tap **ENABLE TILT** to look
 around by moving the phone (iOS asks for motion permission). On desktop:
